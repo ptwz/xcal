@@ -13,7 +13,7 @@ class GUI(object):
     def __init__(self, n_points, old_cal_inv, new_cal=None):
         from tkinter import Tk, Canvas
         from math import ceil, sqrt
-        
+
         self.n_points = n_points
         self.old_cal_inv = old_cal_inv
         self.new_cal = new_cal
@@ -99,7 +99,7 @@ class GUI(object):
         if not self.sensitive:
             return
         self.sensitive = False
-    
+
         sx, sy = self.point['sx'], self.point['sy']
 
         ox, oy = event.x/self.X, event.y/self.Y  # old-calibrated
@@ -118,58 +118,52 @@ class GUI(object):
         self.canvas.after(500, self.next_point)
 
 class xcal_base(object):
-    def xinput(self, *args):
-        '''
-        Placeholder for actual code       
-        '''
-        pass
-
     def get_devs(self):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
     def print_devs(self, devs):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
     def choose_preferred(self, devs):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
     def choose_dev(self, devs, preferred):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
     def read_cal(self, dev):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
 
     def choose_points(self):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
     def ask(self, q):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
-        
+
     def use_cal(dev, new_cal):
         '''
-        Placeholder for actual code       
+        Placeholder for actual code
         '''
         pass
 
@@ -179,7 +173,7 @@ class xcal_base(object):
         return out.item(0), out.item(1)
 
     #def show_tk(self, self.n_points, old_cal_inv, new_cal=None):
-        
+
 
     def fit(self, screen_pts, mouse_pts):
         from math import log10
@@ -196,7 +190,7 @@ class xcal_base(object):
             [mx 1] [a 0]   [sx 1]
             [mx 1] [e 1] = [sx 1]
             [... ]         [... ]
-            
+
             [my 1] [d 0]   [sy 1]
             [my 1] [f 1] = [sy 1]
             [... ]         [... ]
@@ -262,8 +256,8 @@ class xcal_xinput(xcal_base):
         return run(args=('/usr/bin/xinput', *args),
                    stdout=PIPE, check=True,
                    universal_newlines=True).stdout
-    
-    
+
+
     def get_devs(self):
         devs = {int(groups[1]): groups[0] for groups in
                 re.findall(r'↳ (\w.+\w)\s+id=(\d+)\D+slave *pointer',
@@ -272,23 +266,23 @@ class xcal_xinput(xcal_base):
             print('No suitable input devices found')
             exit(1)
         return devs
-    
-    
+
+
     def print_devs(self, devs):
         print('Pointer devices:')
         print('%4s %35s' % ('ID', 'Name'))
         for i, name in sorted(devs.items()):
             print('%4d %35s' % (i, name))
         print()
-    
-    
+
+
     def choose_preferred(self, devs):
         preferred = [i for (i, n) in devs.items() if 'touch' in n.lower()]
         if preferred:
             return preferred[0]
         return next(iter(devs.keys()))
-    
-    
+
+
     def choose_dev(self, devs, preferred):
         while True:
             devstr = input('Device to calibrate [%d]: ' % preferred)
@@ -300,8 +294,8 @@ class xcal_xinput(xcal_base):
                 continue
             if dev in devs.keys():
                 return dev
-    
-    
+
+
     def read_cal(self, dev):
         stdout = xinput('--list-props', str(dev))
         line = re.search(prop_name + r'.*:\s+(\S.+)', stdout)
@@ -309,21 +303,21 @@ class xcal_xinput(xcal_base):
             print('Cal property not set; is this an xinput device?')
             exit(1)
         vals = np.matrix(line.group(1)).reshape(3, 3)
-    
+
         print('Old calibration:')
         print(vals)
         print()
         return vals, np.linalg.inv(vals)
-    
-    
+
+
     def ask(self, q):
         do = input(q + ' [y]: ')
         return (do or 'y').lower() == 'y'
-    
-    
+
+
     def choose_points(self):
         p_min, default = 3, 4
-    
+
         while True:
             p_str = input('Point count (min %d) [%d]: ' %
                           (p_min, default))
@@ -333,14 +327,13 @@ class xcal_xinput(xcal_base):
                 p = int(p_str)
             except ValueError:
                 continue
-    
+
             if p >= p_min:
                 return p
-    
+
     def use_cal(self, dev, new_cal):
         cal_array = [str(x)+',' for x in new_cal.flatten().tolist()[0]]
         xinput('--set-prop', str(dev), prop_name, *cal_array)
-    
 
 
 #main()
