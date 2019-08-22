@@ -6,44 +6,52 @@ import re
 import numpy as np
 from subprocess import run, PIPE
 
+from tkinter import Tk, Canvas, simpledialog
 class GUI(object):
     '''
-    Only implement Tk GUI for the moment
+    Only implement Tk GUI for the moment.
+
+    Handles all UI related actions for a calibrator, will be
+    instanciated from there.
+
+    This will take over user communication and main loop,
+    as soon as the calibrator has been set up and passes
+    new information to the calibrator as soon as it is available.
     '''
-    def __init__(self, n_points, old_cal_inv, new_cal=None):
-        from tkinter import Tk, Canvas
-        from math import ceil, sqrt
-
-        self.n_points = n_points
-        self.old_cal_inv = old_cal_inv
-        self.new_cal = new_cal
-
-        self.n_cols = int(ceil(sqrt(n_points)))
-        self.n_rows = int(ceil(n_points / self.n_cols))
-
-        self.X, self.Y = None, None
-        self.point, self.points = {}, []
+    def __init__(self, calibrator, new_cal=None):
         self.index = -1
-
+        self.calibrator = calibrator
         self.root = Tk()
-        self.root.attributes('-fullscreen', True)
+
+
+    def ask_yesno(self, text, yes, no):
+        if simpledialog.askyesno(text):
+            yes()
+        else:
+            no()
+
+    def ask_int(self, text, default=None):
+        return simpledialog.askinteger("", text)#, default=default)
+
+    def show_info(self, text):
+        return simpledialog.showinfo(text)
+
+    def run(self):
+        self.canvas.bind('<Configure>', self.calibrator.ui_ready())
+        self.root.mainloop()
+        return self.points
+
+    def show_workarea(self):
+        #self.root.attributes('-fullscreen', True)
         self.canvas = Canvas(self.root)
-        self.canvas.bind('<Configure>', self.resize)
         self.canvas.pack(expand=True, fill='both')
         self.sensitive = False
         self.legend_y = None
 
-    def transform(self, x, y, cal):
-        p = np.matrix([[x], [y], [1]])
-        out = np.matmul(cal, p)
-        return out.item(0), out.item(1)
-
-    def run(self):
+        self.canvas.bind('<Configure>', self.resize)
         self.root.bind('<Escape>', self.cancel_cal)
         self.canvas.bind('<Escape>', self.cancel_cal)
         self.canvas.bind('<Button-1>', self.click)
-        self.root.mainloop()
-        return self.points
 
     def resize(self, event):
         self.X, self.Y = event.width, event.height
@@ -60,8 +68,8 @@ class GUI(object):
         self.legend('Raw self.point in black')
         self.legend('Old cal self.point in blue', '#00F')
         self.legend('Target self.point in red', '#F00')
-        if self.new_cal is not None:
-            self.legend('New cal self.point in green', '#0F0')
+        #if self.new_cal is not None:
+        #    self.legend('New cal self.point in green', '#0F0')
 
     def next_point(self):
         self.index += 1
@@ -105,11 +113,11 @@ class GUI(object):
         ox, oy = event.x/self.X, event.y/self.Y  # old-calibrated
         self.indicator(sx, sy, ox, oy, '#00F')
 
-        ux, uy = self.transform(ox, oy, self.old_cal_inv)  # uncalibrated
+        ux, uy = self.calibrator.transform(ox, oy, self.calibrator.old_cal_inv)  # uncalibrated
         self.indicator(sx, sy, ux, uy, '#000')
 
-        if self.new_cal is not None:
-            nx, ny = self.transform(ux, uy, self.new_cal)  # new-calibrated (test only)
+        if self.calibrator.new_cal is not None:
+            nx, ny = self.transform(ux, uy, self.calibrator.new_cal)  # new-calibrated (test only)
             self.indicator(sx, sy, nx, ny, '#0F0')
 
         self.point.update({'mx': ux, 'my': uy})
@@ -168,12 +176,10 @@ class xcal_base(object):
         pass
 
     def transform(self, x, y, cal):
+        # TBD: Make cal selectable by flags, maybe makes more sense?
         p = np.matrix([[x], [y], [1]])
         out = np.matmul(cal, p)
         return out.item(0), out.item(1)
-
-    #def show_tk(self, self.n_points, old_cal_inv, new_cal=None):
-
 
     def fit(self, screen_pts, mouse_pts):
         from math import log10
@@ -218,36 +224,77 @@ class xcal_base(object):
         m_transform = m_transform.getT()
         return m_transform, quality
 
-    def run(self):
+
+    def state_init(self):
+        self.state = self.state_init
+        self.n_points = n_points
+        self.old_cal_inv = old_cal_inv
+        self.new_cal = new_cal
+
+        self.n_cols = int(ceil(sqrt(n_points)))
+        self.n_rows = int(ceil(n_points / self.n_cols))
+
+        self.X, self.Y = None, None
+        self.point, self.points = {}, []
+        self.index = -1
+
         new_cal = None
-        if self.ask('Calibrate?'):
-            self.n_points = self.choose_points(num_points)
-            if disable_rot is None:
-                disable_rot = self.ask('Disable rotation?')
+        self.ui.ask_yesno('Calibrate?', yes=self.state_start_cal, no=self.state_test)
 
-            self.points = self.show_tk(self.n_points, old_cal_inv)
-            if self.points:
-                new_cal, quality = self.calibrate(points, disable_rot)
+    def state_start_cal(self):
+        self.state = self.state_start_cal
+        self.n_points = self.choose_points(num_points)
+        #if self.disable_rot is None:
+        #    self.disable_rot = self.ui.ask_yesno('Disable rotation?')
+        # TODO please do better here!
+        disable_rot = False
 
-                print('New calibration:')
-                print(new_cal)
-                print('Quality (should be at least 3): %.1f' % quality)
-                print()
+        self.points = self.show_tk(self.n_points, old_cal_inv)
+        if self.points:
+            new_cal, quality = self.calibrate(points, disable_rot)
+            message = 'New calibration:'
+            message += "\n"+str(new_cal)
+            message += '\nQuality (should be at least 3): %.1f' % quality
+            self.ui.show_info(message)
 
-        if self.ask('Test?'):
-            self.n_points = self.choose_points()
-            self.show_tk(self.n_points, old_cal_inv, new_cal)
+    def state_test(self):
+        self.n_points = self.choose_points()
+        self.show_tk(self.n_points, old_cal_inv, new_cal)
 
-        if new_cal is not None and self.ask('Use calibration?'):
-            self.use_cal(dev, new_cal)
+    def ui_ready(self):
+        self.state()
 
-    def __init__(self, dev_to_calibrate=None, num_points=None, disable_rot=False):
+    def run(self):
+        from math import ceil, sqrt
+
+        self.n_points = n_points
+        self.old_cal_inv = old_cal_inv
+        self.new_cal = new_cal
+
+        self.n_cols = int(ceil(sqrt(n_points)))
+        self.n_rows = int(ceil(n_points / self.n_cols))
+
+        self.X, self.Y = None, None
+        self.point, self.points = {}, []
+        self.index = -1
+
+        #if new_cal is not None and self.ui.ask_yesno('Use calibration?'):
+        #    self.use_cal(dev, new_cal)
+
+    def __init__(self, ui, dev_to_calibrate=None, num_points=None, disable_rot=False):
+        '''
+        Create a new calibrator instance.
+
+        Takes the UI base class and instanciates it.
+        '''
+        self.ui = ui(self)
         self.devs = self.get_devs()
-        preferred = self.choose_preferred()
-        dev = self.choose_dev(preferred, dev_to_calibrate)
+        preferred = self.choose_preferred(self.devs)
+        dev = self.choose_dev(preferred)
 
-        old_cal, old_cal_inv = self.read_cal(dev)
+        self.old_cal, self.old_cal_inv = self.read_cal(dev)
 
+        self.state = self.state_init
 
 class xcal_xinput(xcal_base):
     prop_name = 'libinput Calibration Matrix'
@@ -261,7 +308,7 @@ class xcal_xinput(xcal_base):
     def get_devs(self):
         devs = {int(groups[1]): groups[0] for groups in
                 re.findall(r'↳ (\w.+\w)\s+id=(\d+)\D+slave *pointer',
-                           xinput('--list', '--short'))}
+                           self.xinput('--list', '--short'))}
         if not devs:
             print('No suitable input devices found')
             exit(1)
@@ -269,12 +316,12 @@ class xcal_xinput(xcal_base):
 
 
     def print_devs(self, devs):
-        print('Pointer devices:')
-        print('%4s %35s' % ('ID', 'Name'))
+        msg = "\n".join(('Pointer devices:',
+                        '%4s %35s' % ('ID', 'Name')))
+        
         for i, name in sorted(devs.items()):
-            print('%4d %35s' % (i, name))
-        print()
-
+            msg+=('\n%4d %35s' % (i, name))
+        self.ui.show_info(msg)
 
     def choose_preferred(self, devs):
         preferred = [i for (i, n) in devs.items() if 'touch' in n.lower()]
@@ -283,21 +330,20 @@ class xcal_xinput(xcal_base):
         return next(iter(devs.keys()))
 
 
-    def choose_dev(self, devs, preferred):
+    def choose_dev(self, preferred):
         while True:
-            devstr = input('Device to calibrate [%d]: ' % preferred)
-            if not devstr:
-                return preferred
+
+            devstr = self.ui.ask_int('Device to calibrate:' , preferred)
             try:
                 dev = int(devstr)
             except ValueError:
                 continue
-            if dev in devs.keys():
+            if dev in self.devs.keys():
                 return dev
 
 
     def read_cal(self, dev):
-        stdout = xinput('--list-props', str(dev))
+        stdout = self.xinput('--list-props', str(dev))
         line = re.search(prop_name + r'.*:\s+(\S.+)', stdout)
         if not line:
             print('Cal property not set; is this an xinput device?')
@@ -310,19 +356,11 @@ class xcal_xinput(xcal_base):
         return vals, np.linalg.inv(vals)
 
 
-    def ask(self, q):
-        do = input(q + ' [y]: ')
-        return (do or 'y').lower() == 'y'
-
-
     def choose_points(self):
         p_min, default = 3, 4
 
         while True:
-            p_str = input('Point count (min %d) [%d]: ' %
-                          (p_min, default))
-            if not p_str:
-                return default
+            p_str = self.ui.ask_int('Point count (min %d): ' % p_min, default)
             try:
                 p = int(p_str)
             except ValueError:
@@ -333,7 +371,8 @@ class xcal_xinput(xcal_base):
 
     def use_cal(self, dev, new_cal):
         cal_array = [str(x)+',' for x in new_cal.flatten().tolist()[0]]
-        xinput('--set-prop', str(dev), prop_name, *cal_array)
+        self.xinput('--set-prop', str(dev), prop_name, *cal_array)
 
 
+xcal_xinput(GUI)
 #main()
