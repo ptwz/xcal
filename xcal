@@ -7,7 +7,7 @@ import numpy as np
 import math
 from subprocess import run, PIPE
 
-from tkinter import Tk, Canvas, messagebox, simpledialog, Frame, Label, Button, IntVar, Entry
+from tkinter import Tk, Canvas, messagebox, simpledialog, Frame, Label, Button, IntVar, Entry, END, Listbox
 
 class GUI(object):
     '''
@@ -68,6 +68,26 @@ class GUI(object):
         label.grid(row=0, column=0)
         entry.grid(row=0, column=1)
         btn_on.grid(row=0, column=2)
+
+    def ask_list(self, text, items, default=None, when_done=None):
+        #return simpledialog.askinteger("", text)#, default=default)
+        label = Label(self.frame, text=text)
+        lb = Listbox(self.frame)
+        for item in items:
+            lb.insert(END, item)
+
+        def done():
+            selection = lb.curselection()
+            if not selection:
+                return
+            self.clear_frame()
+            # Assume there is only one selection at a time
+            when_done(items[selection[0]])
+
+        btn_ok = Button(self.frame, text="OK", command=done)
+        label.grid(row=0, column=0)
+        lb.grid(row=1, column=0)
+        btn_ok.grid(row=2, column=0)
 
     def show_info(self, text, done):
         messagebox.showinfo(text)
@@ -239,14 +259,18 @@ class xcal_base(object):
     def state_choose_dev(self):
         self.state = self.state_choose_dev
         preferred = self.choose_preferred(self.devs)
-        def chosen(var):
-            dev = var.get()
+        def chosen(devname):
+            print(devname)
+            dev = int(devname.split('-')[0])
             if dev in self.devs.keys():
                 self.dev = dev
                 self.state_choose_points()
             else:
                 self.state_choose_dev()
-        self.ui.ask_int('Device to calibrate:', preferred, chosen)
+        dev_list = []
+        for i, name in sorted(self.devs.items()):
+            dev_list.append('%3d-%36s' % (i, name))
+        self.ui.ask_list('Device to calibrate:', dev_list, preferred, chosen)
 
     def state_choose_points(self):
         p_min, default = 3, 4
