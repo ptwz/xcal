@@ -57,6 +57,7 @@ class GUI(object):
         #return simpledialog.askinteger("", text)#, default=default)
         label = Label(self.frame, text=text)
         v = IntVar()
+        v.set(default)
         entry = Entry(self.frame, textvariable=v)
 
         def done():
@@ -242,14 +243,26 @@ class xcal_base(object):
             dev = var.get()
             if dev in self.devs.keys():
                 self.dev = dev
-                self.state_init()
+                self.state_choose_points()
             else:
                 self.state_choose_dev()
         self.ui.ask_int('Device to calibrate:', preferred, chosen)
 
+    def state_choose_points(self):
+        p_min, default = 3, 4
+        self.state = self.state_choose_points
+        def chosen(var):
+            p = var.get()
+            if p > p_min:
+                self.n_points = p
+                self.state_init()
+            else:
+                self.state()
+
+        p_str = self.ui.ask_int('Point count (min %d): ' % p_min, default, when_done=chosen)
+
     def state_init(self):
         self.state = self.state_init
-        self.n_points = 8
 
         self.old_cal, self.old_cal_inv = self.read_cal(self.dev)
 
@@ -389,18 +402,6 @@ class xcal_xinput(xcal_base):
         return vals, np.linalg.inv(vals)
 
 
-    def choose_points(self):
-        p_min, default = 3, 4
-
-        while True:
-            p_str = self.ui.ask_int('Point count (min %d): ' % p_min, default)
-            try:
-                p = int(p_str)
-            except ValueError:
-                continue
-
-            if p >= p_min:
-                return p
 
     def use_cal(self, dev, new_cal):
         cal_array = [str(x)+',' for x in new_cal.flatten().tolist()[0]]
