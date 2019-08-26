@@ -350,7 +350,7 @@ class xcal_base(object):
         self.ui.ask_yesno(message, yes=self.state_use_cal, no=self.state_quit)
 
     def state_use_cal(self):
-        #TODO do something more clever here!
+        self.use_cal()
         self.state_quit()
 
     def state_test(self):
@@ -368,8 +368,6 @@ class xcal_base(object):
         self.ui.after(0.5, self.state)
         # Pass control to UI
         self.ui.run()
-        #if new_cal is not None and self.ui.ask_yesno('Use calibration?'):
-        #    self.use_cal(dev, new_cal)
 
     def __init__(self, ui, dev_to_calibrate=None, num_points=None, disable_rot=False):
         '''
@@ -429,11 +427,9 @@ class xcal_xinput(xcal_base):
         print()
         return vals, np.linalg.inv(vals)
 
-
-
-    def use_cal(self, dev, new_cal):
-        cal_array = [str(x)+',' for x in new_cal.flatten().tolist()[0]]
-        self.xinput('--set-prop', str(dev), prop_name, *cal_array)
+    def use_cal(self):
+        cal_array = [str(x)+',' for x in self.new_cal.flatten().tolist()[0]]
+        self.xinput('--set-prop', str(self.dev), prop_name, *cal_array)
 
 
 cal=xcal_xinput(GUI)
