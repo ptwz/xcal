@@ -32,10 +32,17 @@ class GUI(object):
         self.window = self.canvas.create_window((self.X//2, self.Y//2), window=self.frame)
         self.canvas.pack(expand=True, fill='both')
         self.canvas.bind('<Configure>', self.resize)
+        self.canvas_widgets = []
 
     def clear_frame(self):
         for widget in self.frame.winfo_children():
             widget.destroy()
+
+    def clear_screen(self):
+        self.legend_y = 0
+        for w in self.canvas_widgets:
+            self.canvas.delete(w)
+        self.canvas_widgets = []
 
     def ask_yesno(self, text, yes, no):
         label = Label(self.frame, text=text)
@@ -114,10 +121,12 @@ class GUI(object):
 
     def resize(self, event):
         self.X, self.Y = event.width, event.height
+        self.clear_screen()
         self.draw_legends()
 
     def legend(self, text, colour='#000'):
-        self.canvas.create_text(self.X/2, self.legend_y, text=text, fill=colour)
+        w = self.canvas.create_text(self.X/2, self.legend_y, text=text, fill=colour)
+        self.canvas_widgets.append(w)
         self.legend_y += 12
 
     def draw_legends(self):
@@ -342,9 +351,9 @@ class xcal_base(object):
         print("In state_done_cal.")
         self.ui.sensitive = False
 
-        new_cal, quality = self.calibrate(self.points, self.disable_rot)
+        self.new_cal, quality = self.calibrate(self.points, self.disable_rot)
         message = 'New calibration:'
-        message += "\n"+str(new_cal)
+        message += "\n"+str(self.new_cal)
         message += '\nQuality (should be at least 3): %.1f' % quality
         message += "\n\nUse calibration?"
         self.ui.ask_yesno(message, yes=self.state_use_cal, no=self.state_quit)
@@ -429,7 +438,7 @@ class xcal_xinput(xcal_base):
 
     def use_cal(self):
         cal_array = [str(x)+',' for x in self.new_cal.flatten().tolist()[0]]
-        self.xinput('--set-prop', str(self.dev), prop_name, *cal_array)
+        self.xinput('--set-prop', str(self.dev), self.prop_name, *cal_array)
 
 
 cal=xcal_xinput(GUI)
