@@ -112,6 +112,7 @@ class GUI(object):
     def show_workarea(self, when_done):
         self.sensitive = False
         self.legend_y = None
+        self.clear_screen()
 
         # TODO: Do better ;)
         self.root.bind('<Escape>', self.cancel_cal)
@@ -152,12 +153,12 @@ class GUI(object):
 
     def cross(self, px, py, colour):
         x, y = px*self.X, py*self.Y
-        self.canvas.create_line(x-10, y, x+10, y, fill=colour)
-        self.canvas.create_line(x, y-10, x, y+10, fill=colour)
+        self.canvas_widgets.append(self.canvas.create_line(x-10, y, x+10, y, fill=colour))
+        self.canvas_widgets.append(self.canvas.create_line(x, y-10, x, y+10, fill=colour))
 
     def draw_target(self, px, py):
         x, y = px*self.X, py*self.Y
-        self.canvas.create_oval(x-10, y-10, x+10, y+10, outline='#F00', width=3)
+        self.canvas_widgets.append(self.canvas.create_oval(x-10, y-10, x+10, y+10, outline='#F00', width=3))
         self.cross(px, py, '#F00')
 
     def cancel_cal(self, _):
@@ -166,7 +167,7 @@ class GUI(object):
         self.root.destroy()
 
     def indicator(self, sx, sy, px, py, colour):
-        self.canvas.create_line(self.X*sx, self.Y*sy, self.X*px, self.Y*py, fill=colour)
+        self.canvas_widgets.append(self.canvas.create_line(self.X*sx, self.Y*sy, self.X*px, self.Y*py, fill=colour))
         self.cross(px, py, colour)
 
     def click(self, event):
