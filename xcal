@@ -92,6 +92,11 @@ class GUI(object):
             # Assume there is only one selection at a time
             when_done(items[selection[0]])
 
+        if default is None:
+            lb.selection_set(0)
+        else:
+            lb.selection_set(default)
+
         btn_ok = Button(self.frame, text="OK", command=done)
         label.grid(row=0, column=0)
         lb.grid(row=1, column=0)
@@ -265,7 +270,7 @@ class xcal_base(object):
 
     def state_choose_dev(self):
         self.state = self.state_choose_dev
-        preferred = self.choose_preferred(self.devs)
+        preferred_id = self.choose_preferred(self.devs)
         def chosen(devname):
             print(devname)
             dev = int(devname.split('-')[0])
@@ -275,7 +280,10 @@ class xcal_base(object):
             else:
                 self.state_choose_dev()
         dev_list = []
+        preferred = 0
         for i, name in sorted(self.devs.items()):
+            if i == preferred_id:
+                preferred = len(dev_list)
             dev_list.append('%3d-%36s' % (i, name))
         self.ui.ask_list('Device to calibrate:', dev_list, preferred, chosen)
 
