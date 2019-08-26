@@ -162,6 +162,9 @@ class GUI(object):
         ex, ey = event.x, event.y
         self.calibrator.got_click(ex, ey)
 
+    def quit(self):
+        self.root.destroy()
+
 class xcal_base(object):
     def get_devs(self):
         '''
@@ -187,12 +190,6 @@ class xcal_base(object):
         '''
         pass
 
-
-    def choose_points(self):
-        '''
-        Placeholder for actual code
-        '''
-        pass
 
     def ask(self, q):
         '''
@@ -349,15 +346,22 @@ class xcal_base(object):
         message = 'New calibration:'
         message += "\n"+str(new_cal)
         message += '\nQuality (should be at least 3): %.1f' % quality
-        self.ui.show_info(message, done=self.state_test)
+        message += "\n\nUse calibration?"
+        self.ui.ask_yesno(message, yes=self.state_use_cal, no=self.state_quit)
+
+    def state_use_cal(self):
+        #TODO do something more clever here!
+        self.state_quit()
 
     def state_test(self):
         self.state = self.state_test
         self.n_points = self.choose_points()
         self.show_tk(self.n_points, old_cal_inv, new_cal)
 
-    def run(self):
+    def state_quit(self):
+        self.ui.quit()
 
+    def run(self):
         self.X, self.Y = None, None
         self.point, self.points = {}, []
         self.index = -1
