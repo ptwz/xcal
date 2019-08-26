@@ -31,7 +31,7 @@ class GUI(object):
         self.Y = 480
         self.window = self.canvas.create_window((self.X//2, self.Y//2), window=self.frame)
         self.canvas.pack(expand=True, fill='both')
-        self.canvas.bind('<Configure>', self.calibrator.ui_ready)
+        self.canvas.bind('<Configure>', self.resize)
 
     def clear_frame(self):
         for widget in self.frame.winfo_children():
@@ -76,16 +76,17 @@ class GUI(object):
         self.root.mainloop()
 
     def show_workarea(self, when_done):
-        #self.root.attributes('-fullscreen', True)
         self.sensitive = False
         self.legend_y = None
 
         # TODO: Do better ;)
-        self.when_done = when_done
-        self.canvas.bind('<Configure>', self.resize)
         self.root.bind('<Escape>', self.cancel_cal)
         self.canvas.bind('<Escape>', self.cancel_cal)
         self.canvas.bind('<Button-1>', self.click)
+        # TODO Move when_done into resize callback, before
+        #      release
+        #self.root.attributes('-fullscreen', True)
+        when_done()
 
     def after(self, seconds, func):
         self.root.after(int(seconds*1000.), func)
@@ -93,7 +94,6 @@ class GUI(object):
     def resize(self, event):
         self.X, self.Y = event.width, event.height
         self.draw_legends()
-        self.when_done()
 
     def legend(self, text, colour='#000'):
         self.canvas.create_text(self.X/2, self.legend_y, text=text, fill=colour)
@@ -138,9 +138,8 @@ class GUI(object):
             return
         self.sensitive = False
 
-        sx, sy = self.point['sx'], self.point['sy']
         ex, ey = event.x, event.y
-        self.calibrator.got_click(sx, sy, ex, ey)
+        self.calibrator.got_click(ex, ey)
 
 class xcal_base(object):
     def get_devs(self):
@@ -242,6 +241,7 @@ class xcal_base(object):
         def chosen(var):
             dev = var.get()
             if dev in self.devs.keys():
+                self.dev = dev
                 self.state_init()
             else:
                 self.state_choose_dev()
@@ -251,38 +251,44 @@ class xcal_base(object):
         self.state = self.state_init
         self.n_points = 8
 
+        self.old_cal, self.old_cal_inv = self.read_cal(self.dev)
+
         self.n_cols = int(math.ceil(math.sqrt(self.n_points)))
         self.n_rows = int(math.ceil(self.n_points / self.n_cols))
 
         self.X, self.Y = None, None
         self.point, self.points = {}, []
-        self.index = -1
+        self.index = 0
 
         new_cal = None
         self.ui.ask_yesno('Calibrate?', yes=self.state_cal_init, no=self.state_test)
 
-    def got_click(self, sx, sy, ex, ey):
+    def got_click(self, ex, ey):
+        sx, sy = self.point['sx'], self.point['sy']
         ox, oy = ex/self.ui.X, ey/self.ui.Y  # old-calibrated
         self.ui.indicator(sx, sy, ox, oy, '#00F')
 
-        ux, uy = self.calibrator.transform(ox, oy, self.calibrator.old_cal_inv)  # uncalibrated
+        ux, uy = self.transform(ox, oy, self.old_cal_inv)  # uncalibrated
         self.ui.indicator(sx, sy, ux, uy, '#000')
 
-        if self.calibrator.new_cal is not None:
+        if self.new_cal is not None:
             nx, ny = self.transform(ux, uy, self.calibrator.new_cal)  # new-calibrated (test only)
             self.ui.indicator(sx, sy, nx, ny, '#0F0')
 
         self.point.update({'mx': ux, 'my': uy})
         self.points.append(self.point)
+        self.index += 1
 
         # Wake up state machine in 500ms
         self.ui.after(0.5, self.state)
 
     def state_cal_init(self):
+        self.index = 0
         self.ui.show_workarea(self.state_cal)
 
     def state_cal(self):
         self.state = self.state_cal
+        print("In state_cal: {}".format(self.index))
         #if self.disable_rot is None:
         #    self.disable_rot = self.ui.ask_yesno('Disable rotation?')
         # TODO please do better here!
@@ -299,9 +305,10 @@ class xcal_base(object):
 
     def state_done_cal(self):
         self.state = self.state_done_cal
+        print("In state_done_cal.")
         self.ui.sensitive = False
 
-        new_cal, quality = self.calibrate(self.points, disable_rot)
+        new_cal, quality = self.calibrate(self.points, self.disable_rot)
         message = 'New calibration:'
         message += "\n"+str(new_cal)
         message += '\nQuality (should be at least 3): %.1f' % quality
@@ -311,11 +318,6 @@ class xcal_base(object):
         self.state = self.state_test
         self.n_points = self.choose_points()
         self.show_tk(self.n_points, old_cal_inv, new_cal)
-
-    def ui_ready(self, event):
-        self.X = event.width
-        self.Y = event.height
-        #self.state()
 
     def run(self):
 
@@ -336,9 +338,8 @@ class xcal_base(object):
         '''
         self.ui = ui(self)
         self.devs = self.get_devs()
-
-        #self.old_cal, self.old_cal_inv = self.read_cal(dev)
-
+        self.new_cal = None
+        self.disable_rot = True
         self.state = self.state_choose_dev
 
 class xcal_xinput(xcal_base):
