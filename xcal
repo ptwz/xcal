@@ -326,7 +326,14 @@ class xcal_base(object):
         self.n_rows = int(math.ceil(self.n_points / self.n_cols))
 
         self.X, self.Y = None, None
-        self.point, self.points = {}, []
+        self.point = {}
+        self.points = []
+        
+        for i in range(self.n_points):
+            x = 0.1 + 0.8*(i  % self.n_cols)/(self.n_cols - 1)
+            y = 0.1 + 0.8*(i // self.n_cols)/(self.n_rows - 1)
+            self.points.append({'sx': x, 'sy': y})
+
         self.index = 0
 
         new_cal = None
@@ -350,7 +357,7 @@ class xcal_base(object):
             self.ui.indicator(sx, sy, nx, ny, '#0F0')
 
         self.point.update({'mx': ux, 'my': uy})
-        self.points.append(self.point)
+        self.points[self.index].update(self.point)
         self.index += 1
 
         # Wake up state machine in 500ms
@@ -371,9 +378,7 @@ class xcal_base(object):
             self.state_done_cal()
 
         self.ui.sensitive = True
-        x = 0.1 + 0.8*(self.index % self.n_cols)/(self.n_cols - 1)
-        y = 0.1 + 0.8*(self.index // self.n_cols)/(self.n_rows - 1)
-        self.point = {'sx': x, 'sy': y}
+        self.point = self.points[self.index]
 
         self.ui.next_point(self.point['sx'], self.point['sy'], self.got_click)
 
@@ -382,6 +387,11 @@ class xcal_base(object):
         self.ui.sensitive = False
 
         self.new_cal, quality = self.calibrate(self.points, self.disable_rot)
+
+        if self.args and self.args.apply:
+            self.state_test()
+            return
+
         message = 'New calibration:'
         message += "\n"+str(self.new_cal)
         message += '\nQuality (should be at least 3): %.1f' % quality
@@ -434,6 +444,8 @@ class xcal_base(object):
                 self.todo.append('calibrate_yes')
             if args.test:
                 self.todo.append('test_yes')
+            if args.apply:
+                self.todo.append('apply_yes')
             if args.save:
                 self.todo.append('save_yes')
                 
@@ -510,6 +522,8 @@ parser.add_argument('-l', '--load', type=argparse.FileType('r'),
                     default=None, help='File name to load calibration from')
 parser.add_argument('-t', '--test', action='store_true',
                     help='Test settings')
+parser.add_argument('-a', '--apply', action='store_true',
+                    help='Apply loaded/generated calibration automatically')
 parser.add_argument('-c', '--calibrate', action='store_true',
                     default=None, help='Run calibration')
 
