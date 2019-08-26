@@ -120,6 +120,7 @@ class GUI(object):
         # TODO Move when_done into resize callback, before
         #      release
         #self.root.attributes('-fullscreen', True)
+        self.draw_legends()
         when_done()
 
     def after(self, seconds, func):
@@ -128,7 +129,6 @@ class GUI(object):
     def resize(self, event):
         self.X, self.Y = event.width, event.height
         self.clear_screen()
-        self.draw_legends()
 
     def legend(self, text, colour='#000'):
         w = self.canvas.create_text(self.X/2, self.legend_y, text=text, fill=colour)
@@ -271,12 +271,23 @@ class xcal_base(object):
     def state_choose_dev(self):
         self.state = self.state_choose_dev
         preferred_id = self.choose_preferred(self.devs)
+        # Command line can bypass this dialog
+        if self.args and self.args.device:
+            self.dev = self.args.device
+            if self.read_cal(self.dev) is None:
+                print("Device {} does not support calibration".format(self.dev))
+                self.ui.quit()
+                return
+            self.state_choose_points()
+            return
+
         def chosen(devname):
             print(devname)
             dev = int(devname.split('-')[0])
             if dev in self.devs.keys():
                 self.dev = dev
                 self.state_choose_points()
+                return
             else:
                 self.state_choose_dev()
         dev_list = []
@@ -290,6 +301,12 @@ class xcal_base(object):
     def state_choose_points(self):
         p_min, default = 3, 4
         self.state = self.state_choose_points
+        # Command line can bypass this dialog
+        if self.args and self.args.num_points:
+            self.n_points = self.args.num_points
+            self.state_init()
+            return
+
         def chosen(var):
             p = var.get()
             if p > p_min:
@@ -313,7 +330,12 @@ class xcal_base(object):
         self.index = 0
 
         new_cal = None
-        self.ui.ask_yesno('Calibrate?', yes=self.state_cal_init, no=self.state_test)
+        if 'calibrate_ask' in self.todo:
+            self.ui.ask_yesno('Calibrate?', yes=self.state_cal_init, no=self.state_test)
+        elif 'calibrate_yes' in self.todo:
+            self.state_cal_init()
+        else:
+            self.state_test()
 
     def got_click(self, ex, ey):
         sx, sy = self.point['sx'], self.point['sy']
@@ -357,7 +379,6 @@ class xcal_base(object):
 
     def state_done_cal(self):
         self.state = self.state_done_cal
-        print("In state_done_cal.")
         self.ui.sensitive = False
 
         self.new_cal, quality = self.calibrate(self.points, self.disable_rot)
@@ -373,8 +394,7 @@ class xcal_base(object):
 
     def state_test(self):
         self.state = self.state_test
-        self.n_points = self.choose_points()
-        self.show_tk(self.n_points, old_cal_inv, new_cal)
+        # TODO show points again
 
     def state_quit(self):
         self.ui.quit()
@@ -399,7 +419,21 @@ class xcal_base(object):
         self.devs = self.get_devs()
         self.new_cal = None
         self.disable_rot = True
-        self.args = None
+        self.args = args
+        self.todo = []
+        if args:
+            if args.load:
+                self.todo.append('load_yes')
+            if args.calibrate:
+                self.todo.append('calibrate_yes')
+            if args.test:
+                self.todo.append('test_yes')
+            if args.save:
+                self.todo.append('save_yes')
+                
+        if set(['calibrate_ask', 'calibrate_yes', 'test_ask', 'test_yes']).isdisjoint(set(self.todo)):
+            self.todo = ['calibrate_ask', 'test_ask']
+        print(self.todo)
         self.state = self.state_choose_dev
 
 class xcal_xinput(xcal_base):
@@ -424,7 +458,6 @@ class xcal_xinput(xcal_base):
         stdout = self.xinput('--list-props', str(dev))
         line = re.search(self.prop_name + r'.*:\s+(\S.+)', stdout)
         if not line:
-            print('Cal property not set; is this an xinput device?')
             return None
         vals = np.matrix(line.group(1)).reshape(3, 3)
 
@@ -460,7 +493,22 @@ class xcal_xinput(xcal_base):
         cal_array = [str(x)+',' for x in self.new_cal.flatten().tolist()[0]]
         self.xinput('--set-prop', str(self.dev), self.prop_name, *cal_array)
 
+parser = argparse.ArgumentParser(description='Calibrate an xinput device')
+parser.add_argument('-d', '--device', type=int, action='store',
+                    help='Device number according to xinput')
+parser.add_argument('-n', '--num-points', type=int, action='store', default=None,
+                    choices=range(3,9), help='Number of calibration points')
+parser.add_argument('-s', '--save', type=argparse.FileType('w'),
+                    default=None, help='File name to store calibration')
+parser.add_argument('-l', '--load', type=argparse.FileType('r'),
+                    default=None, help='File name to load calibration from')
+parser.add_argument('-t', '--test', action='store_true',
+                    help='Test settings')
+parser.add_argument('-c', '--calibrate', action='store_true',
+                    default=None, help='Run calibration')
 
-cal=xcal_xinput(GUI)
+args = parser.parse_args()
+print(args)
+cal=xcal_xinput(GUI, args=args)
 cal.run()
 #main()
