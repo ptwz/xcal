@@ -4,9 +4,11 @@
 
 import re
 import numpy as np
+import math
 from subprocess import run, PIPE
 
-from tkinter import Tk, Canvas, simpledialog
+from tkinter import Tk, Canvas, messagebox, simpledialog, Frame, Label, Button, IntVar, Entry
+
 class GUI(object):
     '''
     Only implement Tk GUI for the moment.
@@ -22,45 +24,76 @@ class GUI(object):
         self.index = -1
         self.calibrator = calibrator
         self.root = Tk()
+        self.calibrator_click = None
+        self.canvas = Canvas(self.root)
+        self.frame = Frame(self.canvas)#, height=self.Y//2, width=self.X//2 )
+        self.X = 640
+        self.Y = 480
+        self.window = self.canvas.create_window((self.X//2, self.Y//2), window=self.frame)
+        self.canvas.pack(expand=True, fill='both')
+        self.canvas.bind('<Configure>', self.calibrator.ui_ready)
 
+    def clear_frame(self):
+        for widget in self.frame.winfo_children():
+            widget.destroy()
 
     def ask_yesno(self, text, yes, no):
-        if simpledialog.askyesno(text):
+        label = Label(self.frame, text=text)
+
+        def done_yes():
+            self.clear_frame()
             yes()
-        else:
+        def done_no():
+            self.clear_frame()
             no()
 
-    def ask_int(self, text, default=None):
-        return simpledialog.askinteger("", text)#, default=default)
+        btn_yes = Button(self.frame, text="Yes", command=done_yes)
+        btn_no = Button(self.frame, text="No", command=done_no)
+        label.grid(row=0, column=1)
+        btn_no.grid(row=1, column=0)
+        btn_yes.grid(row=1, column=2)
+
+    def ask_int(self, text, default=None, when_done=None):
+        #return simpledialog.askinteger("", text)#, default=default)
+        label = Label(self.frame, text=text)
+        v = IntVar()
+        entry = Entry(self.frame, textvariable=v)
+
+        def done():
+            self.clear_frame()
+            when_done(v)
+
+        btn_on = Button(self.frame, text="OK", command=done)
+        label.grid(row=0, column=0)
+        entry.grid(row=0, column=1)
+        btn_on.grid(row=0, column=2)
 
     def show_info(self, text, done):
-        simpledialog.showinfo(text)
+        messagebox.showinfo(text)
         done()
 
     def run(self):
-        self.canvas.bind('<Configure>', self.calibrator.ui_ready())
         self.root.mainloop()
-        return self.points
 
-    def show_workarea(self):
+    def show_workarea(self, when_done):
         #self.root.attributes('-fullscreen', True)
-        self.canvas = Canvas(self.root)
-        self.canvas.pack(expand=True, fill='both')
         self.sensitive = False
         self.legend_y = None
 
+        # TODO: Do better ;)
+        self.when_done = when_done
         self.canvas.bind('<Configure>', self.resize)
         self.root.bind('<Escape>', self.cancel_cal)
         self.canvas.bind('<Escape>', self.cancel_cal)
         self.canvas.bind('<Button-1>', self.click)
 
     def after(self, seconds, func):
-        self.root.after(seconds/1000., func)
+        self.root.after(int(seconds*1000.), func)
 
     def resize(self, event):
         self.X, self.Y = event.width, event.height
         self.draw_legends()
-        self.next_point()
+        self.when_done()
 
     def legend(self, text, colour='#000'):
         self.canvas.create_text(self.X/2, self.legend_y, text=text, fill=colour)
@@ -75,18 +108,11 @@ class GUI(object):
         #if self.new_cal is not None:
         #    self.legend('New cal self.point in green', '#0F0')
 
-    def next_point(self):
-        self.index += 1
-        if self.index >= self.n_points:
-            self.ui.sensitive = False
-            self.root.after(1000, self.root.destroy)
-        else:
-            self.ui.sensitive = True
-            x = 0.1 + 0.8*(self.index % self.n_cols)/(self.n_cols - 1)
-            y = 0.1 + 0.8*(self.index // self.n_cols)/(self.n_rows - 1)
-            self.point = {'sx': x, 'sy': y}
+    def next_point(self, sx, sy, click_handler=None):
+        if click_handler is not None:
+            self.calibrator_click = click_handler
 
-            self.draw_target(self.point['sx'], self.point['sy'])
+        self.draw_target(sx, sy)
 
     def cross(self, px, py, colour):
         x, y = px*self.X, py*self.Y
@@ -130,12 +156,6 @@ class xcal_base(object):
         pass
 
     def choose_preferred(self, devs):
-        '''
-        Placeholder for actual code
-        '''
-        pass
-
-    def choose_dev(self, devs, preferred):
         '''
         Placeholder for actual code
         '''
@@ -216,21 +236,30 @@ class xcal_base(object):
         return m_transform, quality
 
 
+    def state_choose_dev(self):
+        self.state = self.state_choose_dev
+        preferred = self.choose_preferred(self.devs)
+        def chosen(var):
+            dev = var.get()
+            if dev in self.devs.keys():
+                self.state_init()
+            else:
+                self.state_choose_dev()
+        self.ui.ask_int('Device to calibrate:', preferred, chosen)
+
     def state_init(self):
         self.state = self.state_init
-        self.n_points = n_points
-        self.old_cal_inv = old_cal_inv
-        self.new_cal = new_cal
+        self.n_points = 8
 
-        self.n_cols = int(ceil(sqrt(n_points)))
-        self.n_rows = int(ceil(n_points / self.n_cols))
+        self.n_cols = int(math.ceil(math.sqrt(self.n_points)))
+        self.n_rows = int(math.ceil(self.n_points / self.n_cols))
 
         self.X, self.Y = None, None
         self.point, self.points = {}, []
         self.index = -1
 
         new_cal = None
-        self.ui.ask_yesno('Calibrate?', yes=self.state_cal, no=self.state_test)
+        self.ui.ask_yesno('Calibrate?', yes=self.state_cal_init, no=self.state_test)
 
     def got_click(self, sx, sy, ex, ey):
         ox, oy = ex/self.ui.X, ey/self.ui.Y  # old-calibrated
@@ -249,11 +278,11 @@ class xcal_base(object):
         # Wake up state machine in 500ms
         self.ui.after(0.5, self.state)
 
+    def state_cal_init(self):
+        self.ui.show_workarea(self.state_cal)
+
     def state_cal(self):
         self.state = self.state_cal
-        #self.n_points = self.choose_points(num_points)
-        # TODO: Do better!
-        self.n_points = 8
         #if self.disable_rot is None:
         #    self.disable_rot = self.ui.ask_yesno('Disable rotation?')
         # TODO please do better here!
@@ -261,7 +290,12 @@ class xcal_base(object):
         if self.index >= self.n_points:
             self.state_done_cal()
 
-        self.ui.next_point(self.got_click)
+        self.ui.sensitive = True
+        x = 0.1 + 0.8*(self.index % self.n_cols)/(self.n_cols - 1)
+        y = 0.1 + 0.8*(self.index // self.n_cols)/(self.n_rows - 1)
+        self.point = {'sx': x, 'sy': y}
+
+        self.ui.next_point(self.point['sx'], self.point['sy'], self.got_click)
 
     def state_done_cal(self):
         self.state = self.state_done_cal
@@ -278,23 +312,19 @@ class xcal_base(object):
         self.n_points = self.choose_points()
         self.show_tk(self.n_points, old_cal_inv, new_cal)
 
-    def ui_ready(self):
-        self.state()
+    def ui_ready(self, event):
+        self.X = event.width
+        self.Y = event.height
+        #self.state()
 
     def run(self):
-        from math import ceil, sqrt
-
-        self.n_points = n_points
-        self.old_cal_inv = old_cal_inv
-        self.new_cal = new_cal
-
-        self.n_cols = int(ceil(sqrt(n_points)))
-        self.n_rows = int(ceil(n_points / self.n_cols))
 
         self.X, self.Y = None, None
         self.point, self.points = {}, []
         self.index = -1
-
+        self.ui.after(0.5, self.state)
+        # Pass control to UI
+        self.ui.run()
         #if new_cal is not None and self.ui.ask_yesno('Use calibration?'):
         #    self.use_cal(dev, new_cal)
 
@@ -306,12 +336,10 @@ class xcal_base(object):
         '''
         self.ui = ui(self)
         self.devs = self.get_devs()
-        preferred = self.choose_preferred(self.devs)
-        dev = self.choose_dev(preferred)
 
-        self.old_cal, self.old_cal_inv = self.read_cal(dev)
+        #self.old_cal, self.old_cal_inv = self.read_cal(dev)
 
-        self.state = self.state_init
+        self.state = self.state_choose_dev
 
 class xcal_xinput(xcal_base):
     prop_name = 'libinput Calibration Matrix'
@@ -346,19 +374,6 @@ class xcal_xinput(xcal_base):
             return preferred[0]
         return next(iter(devs.keys()))
 
-
-    def choose_dev(self, preferred):
-        while True:
-
-            devstr = self.ui.ask_int('Device to calibrate:' , preferred)
-            try:
-                dev = int(devstr)
-            except ValueError:
-                continue
-            if dev in self.devs.keys():
-                return dev
-
-
     def read_cal(self, dev):
         stdout = self.xinput('--list-props', str(dev))
         line = re.search(self.prop_name + r'.*:\s+(\S.+)', stdout)
@@ -391,5 +406,6 @@ class xcal_xinput(xcal_base):
         self.xinput('--set-prop', str(dev), prop_name, *cal_array)
 
 
-xcal_xinput(GUI)
+cal=xcal_xinput(GUI)
+cal.run()
 #main()
