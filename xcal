@@ -320,6 +320,8 @@ class xcal_base(object):
     def state_init(self):
         self.state = self.state_init
 
+        self.in_test_run = False
+
         self.old_cal, self.old_cal_inv = self.read_cal(self.dev)
 
         self.n_cols = int(math.ceil(math.sqrt(self.n_points)))
@@ -338,9 +340,9 @@ class xcal_base(object):
 
         new_cal = None
         if 'calibrate_ask' in self.todo:
-            self.ui.ask_yesno('Calibrate?', yes=self.state_cal_init, no=self.state_test)
+            self.ui.ask_yesno('Calibrate?', yes=self.state_cal_or_test_init, no=self.state_test)
         elif 'calibrate_yes' in self.todo:
-            self.state_cal_init()
+            self.state_cal_or_test_init()
         else:
             self.state_test()
 
@@ -353,7 +355,7 @@ class xcal_base(object):
         self.ui.indicator(sx, sy, ux, uy, '#000')
 
         if self.new_cal is not None:
-            nx, ny = self.transform(ux, uy, self.calibrator.new_cal)  # new-calibrated (test only)
+            nx, ny = self.transform(ux, uy, self.new_cal)  # new-calibrated (test only)
             self.ui.indicator(sx, sy, nx, ny, '#0F0')
 
         self.point.update({'mx': ux, 'my': uy})
@@ -363,19 +365,26 @@ class xcal_base(object):
         # Wake up state machine in 500ms
         self.ui.after(0.5, self.state)
 
-    def state_cal_init(self):
+    def state_cal_or_test_init(self):
+        '''
+        Calibrate or test calibration on screen
+        '''
         self.index = 0
-        self.ui.show_workarea(self.state_cal)
+        self.ui.show_workarea(self.state_cal_or_test)
 
-    def state_cal(self):
-        self.state = self.state_cal
-        print("In state_cal: {}".format(self.index))
+    def state_cal_or_test(self):
+        self.state = self.state_cal_or_test
+        print("In state_cal_or_test: {}".format(self.index))
         #if self.disable_rot is None:
         #    self.disable_rot = self.ui.ask_yesno('Disable rotation?')
         # TODO please do better here!
         disable_rot = False
         if self.index >= self.n_points:
-            self.state_done_cal()
+            if self.in_test_run:
+                self.state_done_test()
+            else:
+                self.state_done_cal()
+            return
 
         self.ui.sensitive = True
         self.point = self.points[self.index]
@@ -398,8 +407,15 @@ class xcal_base(object):
         message += "\n\nUse calibration?"
         self.ui.ask_yesno(message, yes=self.state_use_cal, no=self.state_test)
 
+    def state_done_test(self):
+        self.ui.ask_yesno("Keep calibration?", yes=self.state_quit, no=self.state_reset)
+
+    def state_reset(self):
+        self.use_cal(self.old_cal)
+        self.state_quit()
+
     def state_use_cal(self):
-        self.use_cal()
+        self.use_cal(self.new_cal)
         self.state_test()
 
     def state_test(self):
@@ -408,7 +424,8 @@ class xcal_base(object):
         # TODO show points again
 
     def state_test_start(self):
-        self.state_quit()
+        self.in_test_run = True
+        self.state_cal_or_test_init()
 
     def state_quit(self):
         if args and self.args.save:
@@ -437,6 +454,7 @@ class xcal_base(object):
         self.disable_rot = True
         self.args = args
         self.todo = []
+        self.done = []
         if args:
             if args.load:
                 self.todo.append('load_yes')
@@ -507,8 +525,8 @@ class xcal_xinput(xcal_base):
             return preferred[0]
         return next(iter(devs.keys()))
 
-    def use_cal(self):
-        cal_array = [str(x)+',' for x in self.new_cal.flatten().tolist()[0]]
+    def use_cal(self, cal):
+        cal_array = [str(x)+',' for x in cal.flatten().tolist()[0]]
         self.xinput('--set-prop', str(self.dev), self.prop_name, *cal_array)
 
 parser = argparse.ArgumentParser(description='Calibrate an xinput device')
