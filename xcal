@@ -5,6 +5,7 @@
 import re
 import numpy as np
 import math
+import argparse
 from subprocess import run, PIPE
 
 from tkinter import Tk, Canvas, messagebox, simpledialog, Frame, Label, Button, IntVar, Entry, END, Listbox
@@ -378,16 +379,19 @@ class xcal_base(object):
         # Pass control to UI
         self.ui.run()
 
-    def __init__(self, ui, dev_to_calibrate=None, num_points=None, disable_rot=False):
+    def __init__(self, ui, args=None):
         '''
         Create a new calibrator instance.
 
-        Takes the UI base class and instanciates it.
+        Takes the UI base class and instanciates it. Optionally some 
+        preferences may be passes by command line arguments therefore,
+        these can be passed, too.
         '''
         self.ui = ui(self)
         self.devs = self.get_devs()
         self.new_cal = None
         self.disable_rot = True
+        self.args = None
         self.state = self.state_choose_dev
 
 class xcal_xinput(xcal_base):
@@ -399,10 +403,31 @@ class xcal_xinput(xcal_base):
                    universal_newlines=True).stdout
 
 
+    def read_cal(self, dev):
+        '''
+        Get a devices current calibration matrix from xinput command line tool.
+
+        The device will be identified by its numeric id, passed in "dev".
+
+        May return None if calibration parameters are not supported by device.
+
+        Otherwise it will return its calibration matrix and its inverse.
+        '''
+        stdout = self.xinput('--list-props', str(dev))
+        line = re.search(self.prop_name + r'.*:\s+(\S.+)', stdout)
+        if not line:
+            print('Cal property not set; is this an xinput device?')
+            return None
+        vals = np.matrix(line.group(1)).reshape(3, 3)
+
+        return vals, np.linalg.inv(vals)
+
     def get_devs(self):
         devs = {int(groups[1]): groups[0] for groups in
                 re.findall(r'↳ (\w.+\w)\s+id=(\d+)\D+slave *pointer',
                            self.xinput('--list', '--short'))}
+        # Now filter out devs that do NOT support our calibration
+        devs = { dev: devs[dev] for dev in devs if self.read_cal(dev) is not None }
         if not devs:
             print('No suitable input devices found')
             exit(1)
@@ -422,19 +447,6 @@ class xcal_xinput(xcal_base):
         if preferred:
             return preferred[0]
         return next(iter(devs.keys()))
-
-    def read_cal(self, dev):
-        stdout = self.xinput('--list-props', str(dev))
-        line = re.search(self.prop_name + r'.*:\s+(\S.+)', stdout)
-        if not line:
-            print('Cal property not set; is this an xinput device?')
-            exit(1)
-        vals = np.matrix(line.group(1)).reshape(3, 3)
-
-        print('Old calibration:')
-        print(vals)
-        print()
-        return vals, np.linalg.inv(vals)
 
     def use_cal(self):
         cal_array = [str(x)+',' for x in self.new_cal.flatten().tolist()[0]]
