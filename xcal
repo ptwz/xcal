@@ -175,7 +175,7 @@ class GUI(object):
         self.sensitive = False
 
         ex, ey = event.x, event.y
-        self.calibrator.got_click(ex, ey)
+        self.calibrator_click(ex, ey)
 
     def quit(self):
         self.root.destroy()
@@ -386,17 +386,23 @@ class xcal_base(object):
         message += "\n"+str(self.new_cal)
         message += '\nQuality (should be at least 3): %.1f' % quality
         message += "\n\nUse calibration?"
-        self.ui.ask_yesno(message, yes=self.state_use_cal, no=self.state_quit)
+        self.ui.ask_yesno(message, yes=self.state_use_cal, no=self.state_test)
 
     def state_use_cal(self):
         self.use_cal()
-        self.state_quit()
+        self.state_test()
 
     def state_test(self):
         self.state = self.state_test
+        self.ui.ask_yesno("Test calibration?", yes=self.state_test_start, no=self.state_quit)
         # TODO show points again
 
+    def state_test_start(self):
+        self.state_quit()
+
     def state_quit(self):
+        if args and self.args.save:
+            np.savetxt(self.args.save, self.new_cal)
         self.ui.quit()
 
     def run(self):
