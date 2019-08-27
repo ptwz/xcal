@@ -120,7 +120,7 @@ class GUI(object):
         self.canvas.bind('<Button-1>', self.click)
         # TODO Move when_done into resize callback, before
         #      release
-        #self.root.attributes('-fullscreen', True)
+        self.root.attributes('-fullscreen', True)
         self.draw_legends()
         when_done()
 
